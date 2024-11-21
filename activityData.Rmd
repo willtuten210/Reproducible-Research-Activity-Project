@@ -1,1 +1,140 @@
-**Hopefully this works**
+# Reproducible Research Project 1
+
+This code will analyze movement data from two anonymous individuals collected
+between October and November 2012
+
+## Reading Data  
+First download the file, read it in and take a look:
+```{r}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+knitr::opts_chunk$set(error=FALSE, warning=FALSE, message=FALSE, echo=TRUE, cache.lazy=FALSE)
+
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip", "movement_data.zip")
+
+unzip("movement_data.zip", exdir = "extracted_files")
+
+data <- read_csv("extracted_files/activity.csv", show_col_types=FALSE)
+
+head(data)
+```
+
+We can see columns for steps, date and interval of that day.  
+
+## Data Preprocessing
+
+Because much of the analysis is by day, it will be useful to sum the steps  
+taken each day and view the data in a histogram:
+
+```{r}
+## Group and sum steps per day
+dataByDay <- data %>%
+        group_by(date) %>%
+        summarize(total = sum(steps))
+
+
+
+##Histogram of steps per day
+ggplot(dataByDay, aes(x = total)) +
+        geom_histogram(binwidth = 500, fill = "skyblue", color = "black", alpha = 0.7) + 
+        labs(title = "Steps per Day", x = "Total Steps", y = "Frequency") +
+        theme_minimal()
+```
+
+## Mean and Median steps per day
+        
+```{r}
+median(dataByDay$total, na.rm = TRUE)
+mean(dataByDay$total, na.rm=TRUE)
+```
+
+
+## Analysis by 5 minute intervals  
+This code will group the data by interval and calculate the mean for each, rather than summing by day.
+
+```{r}
+##Grouping by interval
+dataByInterval <- data %>%
+        group_by(interval) %>%
+        summarize(total = mean(steps, na.rm = TRUE))
+```
+
+Plotting this data shows steps for an average day:
+```{r}
+##Plot of average steps by interval
+ggplot(dataByInterval, aes(x = interval, y = total)) +
+        geom_line(color = "blue", size = 0.5) +
+        labs(title = "Average Day", x = "Interval (5min)", y = "Average Steps") +
+        theme_minimal()
+```        
+
+Interval with highest average steps:
+
+```{r}
+dataByInterval[which.max(dataByInterval$total), 1]
+```
+
+
+## Imputing missing data
+We saw in the head() command when reading the data in that there were some NA values.
+Let's count exactly how many:
+
+```{r}
+colSums(is.na(data))
+```
+
+So there are many NA values, all in the steps values. We will copy our data into another dataframe and impute these values with the average value for that interval. Average was calculated from all non NA values for each interval.  
+So, first copy data over:
+```{r}
+imputedData <- data
+```
+
+Next we add the average for each interval in a fourth column by repeating dataByInterval:
+```{r}
+imputedData$tempSteps <- rep(dataByInterval$total, length.out = nrow(imputedData))
+```
+
+Finally use coalesce to change the NA values in steps to the corresponding value in the fourth column
+```{r}
+imputedData <- imputedData %>%
+        mutate(steps = coalesce(steps, tempSteps))
+```
+
+We can make a new histogram with the imputed data:
+```{r}
+imputedDataByDay <- imputedData %>%
+        group_by(date) %>%
+        summarize(total = sum(steps))
+
+ggplot(imputedDataByDay, aes(x = total)) +
+        geom_histogram(binwidth = 500, fill = "pink", color = "black", alpha = 0.7) + 
+        labs(title = "Steps per Day", x = "Total Steps", y = "Frequency") +
+        theme_minimal()
+```
+
+## Weekday differences
+```{r}
+imputedData$day <- factor(ifelse(weekdays(imputedData$date) %in% c("Saturday", "Sunday"), "weekend", "weekday"))
+weekdayData <- imputedData[imputedData$day=="weekday", ]
+weekendData <- imputedData[imputedData$day=="weekend", ]
+
+weekdayDataByInterval <- weekdayData %>%
+        group_by(interval) %>%
+        summarize(total = mean(steps, na.rm = TRUE))
+
+weekendDataByInterval <- weekendData %>%
+        group_by(interval) %>%
+        summarize(total = mean(steps, na.rm = TRUE))
+
+par(mfrow = c(2, 1))
+    
+plot(weekdayDataByInterval$interval, weekdayDataByInterval$total, type = "l", col = "blue", 
+     xlab = "Interval (5min)", ylab = "Average Steps", 
+     main = "Weekdays")
+
+plot(weekendDataByInterval$interval, weekendDataByInterval$total, type = "l", col = "red", 
+     xlab = "Interval (5min)", ylab = "Average Steps", 
+     main = "Weekends")
+```
+
